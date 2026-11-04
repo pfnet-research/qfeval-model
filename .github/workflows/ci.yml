@@ -1,0 +1,96 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+# Lint and test go through the Makefile so CI and local runs cannot drift;
+# in particular `make test` also rejects a uv.lock that references any
+# non-standard package index (e.g. an organization mirror).
+jobs:
+  lint:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: astral-sh/setup-uv@07a047e608db84b3d8c06cd9a7c7dcc9c355c18e # v10.3.2
+        with:
+          python-version: "3.12"
+      - run: uv sync --locked --group dev
+      - run: make lint
+
+  test:
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        python-version: ["3.10", "3.11", "3.12", "3.13", "3.14"]
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: astral-sh/setup-uv@07a047e608db84b3d8c06cd9a7c7dcc9c355c18e # v10.3.2
+        with:
+          python-version: ${{ matrix.python-version }}
+      - run: uv sync --locked --group dev
+      - run: make test
+
+  # Oldest declared dependencies (numpy / pandas lower bounds) on the oldest
+  # supported Python, so the bounds in pyproject.toml stay honest.
+  test-lowest:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: astral-sh/setup-uv@07a047e608db84b3d8c06cd9a7c7dcc9c355c18e # v10.3.2
+        with:
+          python-version: "3.10"
+      - run: uv sync --group dev --resolution lowest-direct
+      - run: uv run pytest
+
+  # Checkpoint path handling is the only OS-sensitive core boundary.
+  test-windows:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: astral-sh/setup-uv@07a047e608db84b3d8c06cd9a7c7dcc9c355c18e # v10.3.2
+        with:
+          python-version: "3.12"
+      - run: uv sync --locked --group dev
+      - run: uv run pytest tests/test_checkpoint.py
+
+  docs:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: astral-sh/setup-uv@07a047e608db84b3d8c06cd9a7c7dcc9c355c18e # v10.3.2
+        with:
+          python-version: "3.12"
+      - run: uv sync --locked --group docs
+      - run: uv run mkdocs build --strict
+
+  # A smoke run only: it checks the benchmark scripts still execute (they
+  # finish in seconds) so the reference numbers in benchmarks/ don't rot.
+  # No performance threshold is enforced — compare numbers manually against
+  # the printed environment.
+  benchmarks:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: astral-sh/setup-uv@07a047e608db84b3d8c06cd9a7c7dcc9c355c18e # v10.3.2
+        with:
+          python-version: "3.12"
+      - run: uv sync --locked
+      - run: uv run python -c "import sys, numpy, pandas; print('python', sys.version.split()[0], 'numpy', numpy.__version__, 'pandas', pandas.__version__)"
+      - run: uv run python benchmarks/bench_inputs.py
+      - run: uv run python benchmarks/bench_scaling.py
+      - run: uv run python benchmarks/bench_modes.py
+      - run: uv run python benchmarks/bench_checkpoint.py
+      - run: uv run python benchmarks/bench_rolling_valid_sum_candidates.py
+      - run: uv run python benchmarks/bench_rolling_sum_candidates.py
+      - run: uv run python benchmarks/bench_window_kernels.py
+      - run: uv run python benchmarks/bench_zoo_hotspots.py

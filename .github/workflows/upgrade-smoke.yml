@@ -1,0 +1,27 @@
+# Early warning for upcoming dependency releases: resolve the newest
+# (including pre-release) dependencies instead of the committed lockfile and
+# run the tests. Regular CI installs from uv.lock (--locked), so numpy /
+# pandas changes would otherwise stay invisible until the lockfile is
+# upgraded. Failures do not gate main / PRs — this is a weekly heads-up, so
+# the job is allowed to fail visibly (no continue-on-error) to actually
+# notify.
+name: Upgrade smoke test
+
+on:
+  schedule:
+    - cron: "0 3 * * 1"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  test-upgraded:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: astral-sh/setup-uv@07a047e608db84b3d8c06cd9a7c7dcc9c355c18e # v10.3.2
+        with:
+          python-version: "3.12"
+      - run: uv sync --group dev --upgrade --prerelease allow
+      - run: uv run pytest
