@@ -1,0 +1,48 @@
+site_name: qfeval-model
+site_description: >-
+  Prediction models over timestamp x symbol panel data as decorated functions.
+repo_url: https://github.com/pfnet-research/qfeval-model
+repo_name: pfnet-research/qfeval-model
+
+theme:
+  name: material
+  features:
+    - content.code.copy
+    - navigation.sections
+
+plugins:
+  - search
+  - mkdocstrings:
+      handlers:
+        python:
+          options:
+            docstring_style: google
+
+nav:
+  - Home: index.md
+  - Tutorials:
+      - First model: tutorials/01-first-model.md
+      - Composition: tutorials/02-composition.md
+      - Batch models: tutorials/03-batch-models.md
+      - Backtesting: tutorials/04-backtest.md
+  - How-to:
+      - Checkpointing: howto/checkpointing.md
+      - Verification: howto/verification.md
+      - Determinism: howto/determinism.md
+      - Side inputs: howto/side-inputs-metadata.md
+      - Risk models: howto/risk-models.md
+      - Technical indicators: howto/technical-indicators.md
+  - Reference:
+      - Public API: reference/api.md
+      - Zoo (built-in models): reference/zoo.md
+      - Metrics: reference/metrics.md
+      - Core internals: reference/core.md
+      - Verify: reference/verify.md
+  - Explanation:
+      - Execution model: explanation/execution-model.md
+      - Trailing axes: explanation/trailing-axes.md
+      - Zoo conventions: explanation/zoo-conventions.md
+      - Leak safety: explanation/leak-safety.md
+      - Checkpoint semantics: explanation/checkpoint-semantics.md
+      - Compatibility policy: explanation/compatibility.md
+      - Layering: explanation/layering.md

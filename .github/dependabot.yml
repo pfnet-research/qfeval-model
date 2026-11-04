@@ -1,0 +1,9 @@
+# The workflows pin actions to full commit SHAs as a supply-chain guard;
+# Dependabot keeps those pins current (it updates the SHA and the trailing
+# version comment together).
+version: 2
+updates:
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: weekly
