@@ -1,6 +1,9 @@
 name: Release
 
 on:
+  pull_request:
+    branches: [main]
+    types: [closed]
   release:
     types: [published]
 
@@ -8,12 +11,37 @@ permissions:
   contents: read
 
 jobs:
-  # Build from the release tag and gate on the same lint/test the CI runs,
-  # so only a tested SHA can produce the published artifact.
+  # Build the merged commit or the release tag. Publish these exact files.
   build:
+    if: >-
+      github.event_name == 'release' ||
+      (github.event.pull_request.merged == true &&
+       github.event.pull_request.head.repo.full_name == github.repository &&
+       startsWith(github.event.pull_request.head.ref, 'release/'))
     runs-on: ubuntu-latest
+    outputs:
+      tag: ${{ steps.release.outputs.tag }}
     steps:
+      - name: Resolve the release version
+        id: release
+        env:
+          HEAD_BRANCH: ${{ github.event.pull_request.head.ref }}
+          RELEASE_TAG: ${{ github.event.release.tag_name }}
+        run: |
+          tag="$RELEASE_TAG"
+          if [[ "$GITHUB_EVENT_NAME" == pull_request ]]; then
+            tag="v${HEAD_BRANCH#release/}"
+          fi
+          version="${tag#v}"
+          if [[ ! "$version" =~ ^[0-9][0-9a-zA-Z.+]*$ ]]; then
+            echo '::error::Use a release/<version> branch or a valid package version tag.'
+            exit 1
+          fi
+          printf 'tag=%s\nversion=%s\n' "$tag" "$version" >> "$GITHUB_OUTPUT"
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ github.event.pull_request.merge_commit_sha || github.sha }}
+          persist-credentials: false
       - uses: astral-sh/setup-uv@07a047e608db84b3d8c06cd9a7c7dcc9c355c18e # v10.3.2
         with:
           python-version: "3.12"
@@ -24,23 +52,21 @@ jobs:
       - name: Check the package metadata and README render
         run: uvx twine check --strict dist/*
       - name: Check the release tag matches the package version
+        env:
+          VERSION: ${{ steps.release.outputs.version }}
         run: |
-          tag="${GITHUB_REF_NAME#v}"
-          if [ ! -e "dist/qfeval_model-${tag}.tar.gz" ]; then
+          if [ ! -e "dist/qfeval_model-${VERSION}.tar.gz" ]; then
             # Workflow commands are read from stdout, not stderr.
-            echo "::error::tag ${GITHUB_REF_NAME} does not match the built version:"
+            echo "::error::Release version ${VERSION} does not match the build:"
             ls dist/
             exit 1
           fi
       - name: Check the CHANGELOG dates this release
+        env:
+          VERSION: ${{ steps.release.outputs.version }}
         run: |
-          tag="${GITHUB_REF_NAME#v}"
-          if ! grep -q "^## \[${tag}\]" CHANGELOG.md; then
-            echo "::error::CHANGELOG.md has no section for ${tag}"
-            exit 1
-          fi
-          if grep -q "^## \[${tag}\] - Unreleased" CHANGELOG.md; then
-            echo "::error::CHANGELOG.md still marks ${tag} as Unreleased; date it before releasing"
+          if ! grep -F "## [${VERSION}] - " CHANGELOG.md | grep -Eq ' - [0-9]{4}-[0-9]{2}-[0-9]{2}$'; then
+            echo "::error::CHANGELOG.md needs a dated heading for ${VERSION}"
             exit 1
           fi
       - name: Check the sdist carries no workspace artifacts
@@ -116,3 +142,25 @@ jobs:
           name: dist
           path: dist/
       - uses: pypa/gh-action-pypi-publish@7245906fb61fa33a13554f9d5fb856fe61758086 # v1.14.3
+
+  github-release:
+    if: github.event_name == 'pull_request'
+    needs: [build, publish]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: dist
+          path: dist/
+      # This release uses GITHUB_TOKEN, so it does not trigger a second workflow.
+      - name: Create the GitHub release and attach the published files
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ needs.build.outputs.tag }}
+          TARGET: ${{ github.event.pull_request.merge_commit_sha }}
+        run: |
+          (cd dist && sha256sum *.whl *.tar.gz > SHA256SUMS)
+          gh release create "$TAG" --repo "$GITHUB_REPOSITORY" --target "$TARGET" \
+            --title "$TAG" --generate-notes dist/*.whl dist/*.tar.gz dist/SHA256SUMS

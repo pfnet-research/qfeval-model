@@ -119,6 +119,12 @@ and describe the compatibility impact in `CHANGELOG.md`.
 2. In `CHANGELOG.md`, add the new version's section and replace its
    `Unreleased` marker with the release date.
 3. Confirm that the bilingual documents agree, as described above.
-4. Tag `v<version>` and publish a GitHub release; the `release.yml` workflow
-   checks that the tag matches the package version, builds, and uploads to
-   PyPI via trusted publishing.
+4. Open a pull request from `release/<version>` in this repository to `main`.
+   Merge it after CI passes. The release workflow validates the merged
+   commit, publishes to PyPI via trusted publishing, and creates a GitHub
+   release tagged `v<version>` with the same distributions and checksums.
+
+For the first release, configure the pending PyPI Trusted Publisher for
+`pfnet-research/qfeval-model`, workflow `release.yml`, and environment `pypi`.
+Publishing a GitHub release manually also runs the same build and PyPI
+checks. Use one of these entry points per version.
